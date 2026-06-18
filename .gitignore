@@ -1,0 +1,21 @@
+# Caches et artefacts Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets et variables d'environnement
+.env
+
+# Fichier Excel de suivi généré
+suivi-etf.xlsx
+*.xlsx
+
+# Artefacts de build AWS SAM
+.aws-sam/
+
+# Environnements virtuels
+.venv/
+venv/
+
+# Fichiers système macOS
+.DS_Store

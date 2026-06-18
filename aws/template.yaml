@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Pipeline serverless de suivi hebdomadaire d'un panier d'ETF
+  (Lambda + EventBridge planifié + S3 + Amazon Bedrock).
+
+# ---------------------------------------------------------------------------
+# Paramètres
+# ---------------------------------------------------------------------------
+Parameters:
+  EodhdApiKey:
+    Type: String
+    NoEcho: true                       # la clé n'apparaît jamais en clair (ni versionnée)
+    Description: Cle API EODHD (fournie au deploiement, jamais committee dans Git).
+
+  ModeleBedrock:
+    Type: String
+    Default: anthropic.claude-3-5-haiku-20241022-v1:0
+    Description: >
+      Identifiant du modele Claude Haiku sur Bedrock. A VERIFIER dans la console
+      Bedrock selon la region (un prefixe de profil d'inference comme « eu. » ou
+      « us. » peut etre requis).
+
+  SymbolesEtf:
+    Type: String
+    Default: SPY.US,QQQ.US,VTI.US
+    Description: Liste de symboles ETF au format EODHD, separes par des virgules.
+
+# ---------------------------------------------------------------------------
+# Réglages communs aux fonctions
+# ---------------------------------------------------------------------------
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 120          # marge pour les appels HTTP (EODHD) + Bedrock
+    MemorySize: 512       # pandas/openpyxl confortables a 512 Mo
+
+# ---------------------------------------------------------------------------
+# Ressources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # Bucket S3 de stockage du fichier Excel et du résumé.
+  BucketSuivi:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "suivi-etf-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:   # bucket strictement privé
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # Fonction Lambda du pipeline.
+  FonctionSuiviEtf:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: suivi-etf-hebdomadaire
+      # CodeUri pointe sur la racine du projet (parent de aws/) pour que
+      # suivi_etf.py soit packagé et importable par le handler.
+      CodeUri: ../
+      Handler: aws.lambda_function.lambda_handler
+      Description: Recupere les prix ETF, calcule les indicateurs, ecrit l'Excel et le resume sur S3.
+      Environment:
+        Variables:
+          EODHD_API_KEY: !Ref EodhdApiKey
+          MODELE_BEDROCK: !Ref ModeleBedrock
+          SYMBOLES_ETF: !Ref SymbolesEtf
+          BUCKET_SUIVI: !Ref BucketSuivi
+          CLE_EXCEL: suivi-etf.xlsx
+          CLE_RESUME: resume-hebdomadaire.txt
+      Policies:
+        # Permissions IAM minimales.
+        # 1) CRUD S3 restreint au bucket de suivi.
+        - S3CrudPolicy:
+            BucketName: !Ref BucketSuivi
+        # 2) Invocation du modèle Bedrock uniquement.
+        #    Resource « * » car les profils d'inference inter-regions impliquent
+        #    plusieurs ARN ; a restreindre a l'ARN du modele si possible.
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        # Déclencheur EventBridge planifié : tous les lundis à 08h00 UTC.
+        PlanificationHebdomadaire:
+          Type: Schedule
+          Properties:
+            Name: suivi-etf-planification-hebdo
+            Description: Declenche le suivi ETF chaque lundi a 08h00 UTC.
+            Schedule: cron(0 8 ? * MON *)
+
+# ---------------------------------------------------------------------------
+# Sorties
+# ---------------------------------------------------------------------------
+Outputs:
+  NomBucket:
+    Description: Nom du bucket S3 de suivi.
+    Value: !Ref BucketSuivi
+
+  NomFonction:
+    Description: Nom de la fonction Lambda.
+    Value: !Ref FonctionSuiviEtf
+
+  ArnFonction:
+    Description: ARN de la fonction Lambda.
+    Value: !GetAtt FonctionSuiviEtf.Arn

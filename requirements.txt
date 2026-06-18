@@ -1,0 +1,6 @@
+# Dépendances du projet de suivi d'ETF.
+boto3        # client AWS (Amazon Bedrock, S3) — déjà présent dans le runtime Lambda
+openpyxl     # lecture/écriture du fichier Excel de suivi
+pandas       # calcul des indicateurs (moyenne mobile, variation)
+requests     # appels HTTP à l'API EODHD
+pytest       # tests unitaires
