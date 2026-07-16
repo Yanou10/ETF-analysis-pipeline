@@ -1,7 +1,6 @@
 # Caches et artefacts Python
 __pycache__/
 *.py[cod]
-.pytest_cache/
 
 # Secrets et variables d'environnement
 .env
@@ -13,9 +12,7 @@ suivi-etf.xlsx
 # Artefacts de build AWS SAM
 .aws-sam/
 
-# Environnements virtuels
-.venv/
-venv/
+# Sortie d'invocation Lambda (aws lambda invoke ... reponse.json)
+reponse.json
 
-# Fichiers système macOS
-.DS_Store
+# Environne
