@@ -38,7 +38,7 @@ def lambda_handler(event, context):
       - BUCKET_SUIVI : nom du bucket S3 de stockage.
       - CLE_EXCEL    : clé S3 du fichier Excel (défaut « suivi-etf.xlsx »).
       - CLE_RESUME   : clé S3 du fichier résumé (défaut « resume-hebdomadaire.txt »).
-      - EODHD_API_KEY, MODELE_BEDROCK, SYMBOLES_ETF : utilisées par suivi_etf.
+      - MODELE_BEDROCK, SYMBOLES_ETF : utilisées par suivi_etf.
 
     Returns:
         dict: statut HTTP et métadonnées de l'exécution.

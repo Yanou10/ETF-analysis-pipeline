@@ -2,7 +2,7 @@
 suivi_etf.py — Pipeline local de suivi hebdomadaire d'un panier d'ETF (Phase 1).
 
 Étapes orchestrées par main() :
-  1. Récupération de l'historique de fin de journée de chaque ETF (API EODHD).
+  1. Récupération de l'historique de fin de journée de chaque ETF (Yahoo Finance).
   2. Calcul d'indicateurs simples selon des règles fixes (variation sur
      ~5 séances, moyenne mobile, alerte « sous la moyenne mobile »).
   3. Écriture d'un instantané dans un fichier Excel (une feuille datée par run).
@@ -23,13 +23,13 @@ import requests
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-# Liste des symboles ETF au format EODHD (ex. « SPY.US »). Surchargeable via la
-# variable d'environnement SYMBOLES_ETF (valeurs séparées par des virgules),
+# Liste des symboles ETF au format Yahoo Finance (ex. « SPY »). Surchargeable via
+# la variable d'environnement SYMBOLES_ETF (valeurs séparées par des virgules),
 # ce qui permet de partager la même configuration entre le script local et la
 # fonction Lambda.
 SYMBOLES_ETF = [
     symbole.strip()
-    for symbole in os.environ.get("SYMBOLES_ETF", "SPY.US,QQQ.US,VTI.US").split(",")
+    for symbole in os.environ.get("SYMBOLES_ETF", "SPY,QQQ,VTI").split(",")
     if symbole.strip()
 ]
 
@@ -46,14 +46,14 @@ JOURS_HISTORIQUE = 200
 # Région AWS. En environnement Lambda, AWS_REGION est défini automatiquement ;
 # en local, boto3 utilise la région configurée via « aws configure » si la
 # variable n'est pas présente.
-REGION_AWS = os.environ.get("AWS_REGION") or "eu-west-1"
+REGION_AWS = os.environ.get("AWS_REGION") or "us-east-1"
 
-# Identifiant du modèle Bedrock (Claude Haiku).
-# REMARQUE : l'identifiant exact dépend de la région et peut nécessiter un
-# préfixe de profil d'inférence (ex. « eu. » ou « us. »). À VÉRIFIER dans la
-# console Amazon Bedrock de votre région avant utilisation.
+# Identifiant du modèle Bedrock (Claude Haiku 4.5).
+# REMARQUE : l'identifiant exact dépend de la région et nécessite le plus souvent
+# un préfixe de profil d'inférence (ex. « us. » en us-east-1, « eu. » en Europe).
+# À VÉRIFIER dans la console Amazon Bedrock de votre région avant utilisation.
 MODELE_BEDROCK = os.environ.get(
-    "MODELE_BEDROCK", "anthropic.claude-3-5-haiku-20241022-v1:0"
+    "MODELE_BEDROCK", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 )
 
 # Chemin du fichier Excel de suivi généré en local.
@@ -64,51 +64,60 @@ CHEMIN_EXCEL = os.environ.get("CHEMIN_EXCEL", "suivi-etf.xlsx")
 # Récupération des données
 # ---------------------------------------------------------------------------
 def fetch_history(symbole):
-    """Récupère l'historique de fin de journée d'un ETF via l'API EODHD.
+    """Récupère l'historique de clôture d'un ETF via l'API chart de Yahoo Finance.
 
-    La clé API est lue dans la variable d'environnement EODHD_API_KEY et n'est
-    jamais écrite en dur dans le code.
+    L'endpoint public de Yahoo Finance ne nécessite aucune clé API. Un en-tête
+    « User-Agent » de navigateur est envoyé afin de réduire le risque de blocage.
 
     Args:
-        symbole (str): symbole de l'ETF au format EODHD (ex. « SPY.US »).
+        symbole (str): symbole de l'ETF au format Yahoo Finance (ex. « SPY »).
 
     Returns:
         pandas.DataFrame: indexé par date (croissante), avec au minimum une
         colonne numérique « close ».
 
     Raises:
-        RuntimeError: si la clé API est absente.
+        RuntimeError: si Yahoo Finance ne renvoie aucune donnée exploitable.
         requests.HTTPError: si l'API renvoie un statut d'erreur.
     """
-    cle_api = os.environ.get("EODHD_API_KEY")
-    if not cle_api:
-        raise RuntimeError(
-            "La variable d'environnement EODHD_API_KEY n'est pas définie. "
-            "Exportez votre clé API EODHD avant de lancer le script."
-        )
-
-    date_debut = (datetime.now() - timedelta(days=JOURS_HISTORIQUE)).strftime("%Y-%m-%d")
-    url = f"https://eodhd.com/api/eod/{symbole}"
+    fin = int(datetime.now().timestamp())
+    debut = int((datetime.now() - timedelta(days=JOURS_HISTORIQUE)).timestamp())
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}"
     parametres = {
-        "api_token": cle_api,
-        "fmt": "json",
-        "period": "d",      # données quotidiennes
-        "from": date_debut,  # limite le volume téléchargé
+        "period1": debut,
+        "period2": fin,
+        "interval": "1d",   # données quotidiennes
     }
+    # Yahoo bloque les requêtes sans User-Agent : on imite un navigateur.
+    entetes = {"User-Agent": "Mozilla/5.0"}
 
-    reponse = requests.get(url, params=parametres, timeout=30)
+    reponse = requests.get(url, params=parametres, headers=entetes, timeout=30)
     reponse.raise_for_status()
     donnees = reponse.json()
 
-    if not donnees:
-        raise RuntimeError(f"Aucune donnée renvoyée par EODHD pour {symbole}.")
+    # Structure attendue : chart.result[0].{timestamp, indicators.quote[0].close}.
+    resultat = (donnees.get("chart") or {}).get("result")
+    if not resultat:
+        raise RuntimeError(f"Aucune donnée renvoyée par Yahoo Finance pour {symbole}.")
+
+    bloc = resultat[0]
+    horodatages = bloc.get("timestamp")
+    quote = (bloc.get("indicators", {}).get("quote") or [{}])[0]
+    cloture = quote.get("close")
+    if not horodatages or not cloture:
+        raise RuntimeError(f"Données de clôture indisponibles pour {symbole}.")
 
     # Construction du DataFrame : date en index, colonne « close » numérique.
-    df = pd.DataFrame(donnees)
-    df["date"] = pd.to_datetime(df["date"])
+    df = pd.DataFrame({
+        "date": pd.to_datetime(horodatages, unit="s"),
+        "close": cloture,
+    })
     df = df.set_index("date").sort_index()
     df["close"] = pd.to_numeric(df["close"], errors="coerce")
     df = df.dropna(subset=["close"])
+
+    if df.empty:
+        raise RuntimeError(f"Aucun cours de clôture exploitable pour {symbole}.")
     return df
 
 
@@ -334,5 +343,3 @@ def main():
         )
 
 
-if __name__ == "__main__":
-    main()

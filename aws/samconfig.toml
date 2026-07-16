@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "suivi-etf"
+resolve_s3 = true
+s3_prefix = "suivi-etf"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ModeleBedrock=\"us.anthropic.claude-haiku-4-5-20251001-v1:0\" SymbolesEtf=\"SPY,QQQ,VTI\""
+image_repositories = []
+
+[default.global.parameters]
+region = "us-east-1

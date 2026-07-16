@@ -12,7 +12,7 @@ suivi et le résumé sur S3.
   pandas pour l'environnement Lambda).
 - L'**accès au modèle Claude Haiku activé** dans la console Amazon Bedrock de la
   région de déploiement.
-- Une **clé API EODHD**.
+- Aucune clé API pour les prix : l'API Yahoo Finance utilisée est publique.
 
 ## Packaging
 
@@ -38,8 +38,6 @@ Lors du `sam deploy --guided`, renseignez notamment :
 
 - **Stack Name** : ex. `suivi-etf`.
 - **AWS Region** : la région où Bedrock et le modèle Haiku sont disponibles.
-- **Parameter EodhdApiKey** : votre clé API EODHD (paramètre `NoEcho`, non
-  versionné, jamais affiché en clair par CloudFormation).
 - **Parameter ModeleBedrock** : laissez la valeur par défaut ou indiquez
   l'identifiant exact relevé dans la console Bedrock de votre région.
 - **Parameter SymbolesEtf** : liste de symboles séparés par des virgules.

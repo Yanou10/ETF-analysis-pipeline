@@ -8,14 +8,9 @@ Description: >
 # Paramètres
 # ---------------------------------------------------------------------------
 Parameters:
-  EodhdApiKey:
-    Type: String
-    NoEcho: true                       # la clé n'apparaît jamais en clair (ni versionnée)
-    Description: Cle API EODHD (fournie au deploiement, jamais committee dans Git).
-
   ModeleBedrock:
     Type: String
-    Default: anthropic.claude-3-5-haiku-20241022-v1:0
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
     Description: >
       Identifiant du modele Claude Haiku sur Bedrock. A VERIFIER dans la console
       Bedrock selon la region (un prefixe de profil d'inference comme « eu. » ou
@@ -23,8 +18,8 @@ Parameters:
 
   SymbolesEtf:
     Type: String
-    Default: SPY.US,QQQ.US,VTI.US
-    Description: Liste de symboles ETF au format EODHD, separes par des virgules.
+    Default: SPY,QQQ,VTI
+    Description: Liste de symboles ETF au format Yahoo Finance, separes par des virgules.
 
 # ---------------------------------------------------------------------------
 # Réglages communs aux fonctions
@@ -32,7 +27,7 @@ Parameters:
 Globals:
   Function:
     Runtime: python3.12
-    Timeout: 120          # marge pour les appels HTTP (EODHD) + Bedrock
+    Timeout: 120          # marge pour les appels HTTP (Yahoo Finance) + Bedrock
     MemorySize: 512       # pandas/openpyxl confortables a 512 Mo
 
 # ---------------------------------------------------------------------------
@@ -67,7 +62,6 @@ Resources:
       Description: Recupere les prix ETF, calcule les indicateurs, ecrit l'Excel et le resume sur S3.
       Environment:
         Variables:
-          EODHD_API_KEY: !Ref EodhdApiKey
           MODELE_BEDROCK: !Ref ModeleBedrock
           SYMBOLES_ETF: !Ref SymbolesEtf
           BUCKET_SUIVI: !Ref BucketSuivi
@@ -108,4 +102,4 @@ Outputs:
 
   ArnFonction:
     Description: ARN de la fonction Lambda.
-    Value: !GetAtt FonctionSuiviEtf.Arn
+    Value: !GetAtt FonctionSuiviEtf.A
